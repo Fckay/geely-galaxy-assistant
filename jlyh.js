@@ -1,208 +1,13 @@
-/**
- * 吉利银河青龙脚本
- * 可实现查询信息、打开哨兵、签到、查询积分等功能
- * 支持MQTT服务，可接入HomeAssistant
- * 需要依赖：mqtt
- * 作者微信：greenteacher46 加微信说明来意，不接受免费咨询，可交流技术
-
- * 使用方法：
- * 1. 在青龙面板中添加环境变量：
- *    - 变量名：jlyh
- *    - 变量值："抓域名https://galaxy-user-api.geely.com/api/v1/login/refresh?refreshToken=后面的值"&请求头headers中deviceSN的值
- *    - 抓不到这个域名抓短信登录包 https://galaxy-user-api.geely.com/api/v1/login/mobileCodeLogin 返回体中的refreshToken的值，同样后面带着&请求头headers中deviceSN的值
- *    - 注意我说的是值 并不是全部 填错的自己看着点
- *    - 并且变量是两个值 两个值 两个值 一个refreshToke的值一个header请求头中的deviceSN的值。变量值格式是：refreshToke的值&deviceSN的值
- * 请注意：吉利银河app异地登录会顶下去，每次重新登录都要重新抓包。抓包教程自己找，安卓实测不需要根证书，用户证书也能抓，可能要配合PC端Reqable。
-
- * 2. 在青龙面板中添加定时任务：
- *    - 名称：jlyh
- *    - 命令：jlyh.js
- *    - 按需设置定时(不会设置问GPT)
- *    - 如果不带任何参数运行脚本，将按默认执行方式执行（通过下方变量配置）
- *    - 如果带参数运行脚本，将执行对应功能
- *    - 例如：
- *    - jlyh.js all 将执行所有功能
- *    - jlyh.js mqtt 将开启MQTT监听（这个要单独开）
- *    - jlyh.js info 将只执行信息获取功能
- *    - jlyh.js sign 将只执行签到功能
- *    - jlyh.js opensentry 将执行打开哨兵功能
- *    - jlyh.js sign opensentry 将执行签到和哨兵功能
- 
- * 3. 通知控制
- *    以下两种方式均可控制通知：
- *    - 修改此处默认值：
- *    - Notify = 0  默认通知设置（仅在重要场景如哨兵开启、签到成功时通知）
- *    - Notify = 1  强制开启通知（所有场景都会通知）
- *    - Notify = 2  强制关闭通知（所有场景都不通知）
- *    - 使用命令行参数：
- *    - jlyh.js notify=1  强制开启通知
- *    - jlyh.js notify=2  强制关闭通知
- * 
- * 4. MQTT配置
- *    - 在下方配置位置输入MQTT地址端口以及状态更新间隔（建议60秒左右）
- *    - 在HomeAssistant中添加MQTT代理，并配置MQTT客户端
- *    - 如果设置了自动监听，开启脚本后将自动生成实体
- **/
-
-// *********************************************************
-// 各类变量的构造
-
-let Notify = 0; 
-let defaultRunAll = false;  // 默认执行模式：false 表示默认只执行信息获取，true 表示默认执行所有功能
-let defaultEnableMqtt = true; // 默认MQTT模式：false 表示默认不启动MQTT监听，true 表示默认启动
-let showInfoLogs = false; // 控制是否在执行功能时显示信息获取相关的日志，默认如果执行功能则不显示
+const $ = new Env("吉利银河签到");
+let Notify = 1; // 强制开启通知
 const ckName = "jlyh";
-const $ = new Env("吉利银河");
-let msg = "";
-
-// MQTT配置
-const mqttConfig = {
-    host: 'mqtt://192.168.0.2', // MQTT服务器地址
-    port: 1883,                 // MQTT服务器端口
-    username: '',               // MQTT用户名
-    password: '',               // MQTT密码
-    clientId: `jlyh_${Math.random().toString(16).slice(3)}`, // 随机客户端ID
-    updateInterval: 60         // MQTT状态更新间隔，单位：秒
-};
 
 class UserInfo {
-        
-    // 车主信息相关变量构造
     constructor(str) {
         this.ckStatus = true;
         this.token = '';
-        this.refreshToken = str.split('&')[0]; // 分隔符
-        this.articleId = '';
+        this.refreshToken = str.split('&')[0];
         this.deviceSN = str.split('&')[1];
-        this.switchStatus = {};  // 用于存储所有功能开关状态
-        this.vehicleInfo = {};   // 用于存储车辆信息
-        this.vehicleStatus = {}; // 用于存储车辆状态信息
-        // 功能名称映射
-        this.featureNames = {
-            'sign': '签到',
-            'opensentry': '打开哨兵',
-            'closesentry': '关闭哨兵',
-            'opendoor': '打开车锁',
-            'closedoor': '关闭车锁',
-            'search': '闪灯鸣笛',
-            'windowslightopen': '微开车窗',
-            'windowfullopen': '全开车窗',
-            'windowclose': '关闭车窗',
-            'sunroofopen': '打开天窗',
-            'sunroofclose': '关闭天窗',
-            'sunshadeopen': '打开遮阳帘',
-            'sunshadeclose': '关闭遮阳帘',
-            'purifieropen': '打开净化',
-            'purifierclose': '关闭净化',
-            'defrostopen': '打开除霜',
-            'defrostclose': '关闭除霜',
-            'aconopen': '打开空调',
-            'aconclose': '关闭空调',
-            'rapidheat': '极速升温',
-            'rapidcool': '极速降温'
-            // 如果要新增功能，在这里添加新功能的映射即可,不添加则会直接显示函数名
-        };
-        // 功能开关状态映射
-        this.switchStatusNames = {
-            'vstdModeStatus': { name: '哨兵模式' },
-            // 'strangerModeActive': { name: '陌生人预警' },
-            // 'campingModeActive': { name: '露营模式' },
-            // 'jouIntVal': { name: '智能巡航' },
-            // 'copActive': { name: '舒适泊车' },
-            // 'parkingComfortStatus': { name: '泊车舒适性' },
-            // 'ldacStatus': { name: '高清音频' },
-            // 'driftModeActive': { name: '漂移模式' },
-            // 'carLocatorStatUploadEn': { name: '车辆定位' },
-            // 'prkgCameraActive': { name: '泊车影像' }
-            // 注释无用功能，取消注释将显示在通知和日志里
-        };
-        // 车辆信息映射
-        this.vehicleInfoNames = {
-            'vin': { name: '车架号' },
-            'seriesNameVs': { name: '车型' },
-            'colorCode': { name: '车身颜色' },
-            'engineNo': { name: '电机编号' }
-        };
-        // 车辆状态映射
-        this.vehicleStatusNames = {
-            basicVehicleStatus: {
-                name: '基本状态',
-                fields: {
-                    distanceToEmptyOnBatteryOnly: { name: '续航里程', format: v => `${v}公里` },
-                    odometer: { name: '总里程', format: v => `${Math.round(v)}公里` }
-                }
-            },
-            vehicleLocationStatus: {
-                name: '位置信息',
-                fields: {
-                    longitude: { name: '经度', format: v => (v / 3600000).toFixed(6) },
-                    latitude: { name: '纬度', format: v => (v / 3600000).toFixed(6) },
-                    altitude: { name: '海拔', format: v => `${v}米` }
-                }
-            },
-            vehicleMaintainStatus: {
-                name: '保养信息',
-                fields: {
-                    distanceToService: { name: '剩余保养里程', format: v => `${v}公里` },
-                    daysToService: { name: '剩余保养天数', format: v => `${v}天` }
-                }
-            },
-            vehicleRunningStatus: {
-                name: '行驶状态',
-                fields: {
-                    speed: { name: '当前速度', format: v => `${v}km/h` },
-                    avgSpeed: { name: '近期平均速度', format: v => `${v}km/h` },
-                    averPowerConsumption: { name: '近期平均能耗', format: v => `${v}kWh/100km` },
-                    tripMeter1: { name: '行程1', format: v => `${v}km` },
-                    tripMeter2: { name: '行程2', format: v => `${v}km` }
-                }
-            },
-            
-            vehicleEnvironmentStatus: {
-                name: '环境状态',
-                fields: {
-                    interiorTemp: { name: '车内温度', format: v => `${v}°C` },
-                    exteriorTemp: { name: '车外温度', format: v => `${v}°C` },
-                    interiorPM25Level: { name: '车内PM2.5', format: v => `${v}μg/m³` }
-                }
-            },
-            vehicleBatteryStatus: {
-                name: '电池状态',
-                fields: {
-                    chargeLevel: { name: '当前电量', format: v => `${v}%` },
-                    timeToFullyCharged: { name: '充满时间', format: v => v === '2047' ? '未充电' : `${(v/60).toFixed(1)}小时` },
-                    dcChargeIAct: { name: '充电电流', format: v => `${v}A` }
-                }
-            },
-            vehicleDoorCoverStatus: {
-                name: '车门状态',
-                fields: {
-                    doorLockStatusDriver: { name: '门锁', format: v => v === '2' ? '已锁定' : '已解锁' },
-                    sunroofStatus: { name: '天窗状态', format: v => v === '1' ? '打开' : '关闭' },
-                    sunshadeStatus: { name: '遮阳帘状态', format: v => v === '1' ? '打开' : '关闭' }
-                }
-            },
-            vehicleClimateStatus: {
-                name: '空调状态',
-                fields: {
-                    preClimateActive: { name: '空调', format: v => v ? '开启' : '关闭' },
-                    defrostActive: { name: '除霜', format: v => v ? '开启' : '关闭' },
-                    airBlowerActive: { name: '净化', format: v => v ? '开启' : '关闭' }
-                }
-            }
-        };
-        this.mqttClient = null; // 添加MQTT客户端实例变量
-        
-        // 添加状态检测映射
-        this.statusChecks = {
-            sentry: () => this.switchStatus.vstdModeStatus === '1',
-            door: () => this.vehicleStatus.vehicleDoorCoverStatus?.doorLockStatusDriver === '1',  // 1表示解锁(ON)，2表示锁定(OFF)
-            ac: () => this.vehicleStatus.vehicleClimateStatus?.preClimateActive === true,
-            defrost: () => this.vehicleStatus.vehicleClimateStatus?.defrostActive === true,
-            purifier: () => this.vehicleStatus.vehicleClimateStatus?.airBlowerActive === true,
-            sunroof: () => this.vehicleStatus.vehicleDoorCoverStatus?.sunroofStatus === '1',  // 1表示打开(ON)，2表示关闭(OFF)
-            sunshade: () => this.vehicleStatus.vehicleDoorCoverStatus?.sunshadeStatus === '1'  // 1表示打开(ON)，2表示关闭(OFF)
-        };
     }
 
     // *********************************************************
@@ -1986,16 +1791,14 @@ class UserInfo {
 // *********************************************************
 // 变量检查与处理
 !(async () => {
-    const userCookie = ($.isNode() ? process.env[ckName] : $.getdata(ckName)) || "";
-    if (!userCookie) {
-        console.log("未找到CK");
-        return;
+    if (typeof $request !== "undefined") {
+        await GetRewrite();
+    } else {
+        if (!(await checkEnv())) return;
+        for (let user of userList) {
+            await user.main();
+        }
     }
-    // 获取命令行参数
-    const args = process.argv.slice(2);
-    const user = new UserInfo(userCookie);
-    await user.main(args);  // 直接传入参数数组，可能为空
-    await $.SendMsg(msg);
 })().catch((e) => console.log(e)).finally(() => $.done());
 
 // ********************************************************

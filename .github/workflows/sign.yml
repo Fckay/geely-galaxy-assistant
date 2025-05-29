@@ -1,0 +1,25 @@
+name: 吉利银河签到
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 每天9点执行（UTC+8）
+  workflow_dispatch:      # 允许手动触发
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: 设置Node.js环境
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          
+      - name: 安装依赖
+        run: npm install crypto
+        
+      - name: 运行签到脚本
+        env:
+          JLYH: ${{ secrets.JLYH }}  # 从GitHub Secrets获取配置
+        run: node jlyh.js
