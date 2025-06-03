@@ -1,4 +1,11 @@
-// sign.js
+class Env {
+    constructor(name) {
+      this.name = name;
+    }
+    log(...args) {
+      console.log(`[${this.name}]`, ...args);
+    }
+}
 
 const $ = new Env("吉利银河签到");
 const https = require("https");

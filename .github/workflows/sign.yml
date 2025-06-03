@@ -2,7 +2,7 @@ name: 吉利银河签到
 
 on:
   schedule:
-    - cron: '0 1 * * *'  # 每天9点执行（UTC+8）
+    - cron: '0 1 * * *'  # 每天9点执行（北京时间 UTC+8 -> cron 需用UTC时间）
   workflow_dispatch:      # 允许手动触发
 
 jobs:
@@ -11,15 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
-      - name: 设置Node.js环境
+      - name: 设置 Node.js 环境
         uses: actions/setup-node@v3
         with:
           node-version: '16'
-          
-      - name: 安装依赖
-        run: npm install crypto
-        
+
       - name: 运行签到脚本
         env:
-          jlyh: ${{ secrets.JLYH }}  # 从GitHub Secrets获取配置
+          jlyh: ${{ secrets.JLYH }}
         run: node jlyh.js
