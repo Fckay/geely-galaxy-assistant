@@ -21,5 +21,5 @@ jobs:
         
       - name: 运行签到脚本
         env:
-          JLYH: ${{ secrets.JLYH }}  # 从GitHub Secrets获取配置
+          jlyh: ${{ secrets.JLYH }}  # 从GitHub Secrets获取配置
         run: node jlyh.js
