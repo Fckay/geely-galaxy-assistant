@@ -99,15 +99,6 @@ function httpRequest({ url, method = "GET", headers = {}, body = "" }) {
   });
 }
 
-class Env {
-  constructor(name) {
-    this.name = name;
-  }
-  log(...args) {
-    console.log(`[${this.name}]`, ...args);
-  }
-}
-
 (async () => {
   const envStr = process.env.jlyh;
   if (!envStr) return console.error("缺少环境变量 jlyh");
