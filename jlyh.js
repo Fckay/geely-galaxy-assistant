@@ -1790,6 +1790,25 @@ class UserInfo {
 
 // *********************************************************
 // 变量检查与处理
+// 环境变量检查函数
+async function checkEnv() {
+    let userCookie = (process.env[ckName] || '').split('\n').filter(x => !!x);
+    if (userCookie.length == 0) {
+        $.DoubleLog(`❌未找到环境变量：${ckName}`);
+        return false;
+    }
+    userList = userCookie.map(cookie => new UserInfo(cookie));
+    return true;
+}
+
+// 重写函数（由于我们使用GitHub Actions，这个函数实际上不会被调用）
+async function GetRewrite() {
+    $.DoubleLog(`⚠️ 当前运行环境不支持重写功能`);
+}
+
+// 用户列表
+let userList = [];
+
 !(async () => {
     if (typeof $request !== "undefined") {
         await GetRewrite();
