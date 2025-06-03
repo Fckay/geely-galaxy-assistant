@@ -6,6 +6,8 @@ class User {
     this.token = '';
     this.refreshToken = envStr.split('&')[0];
     this.deviceSN = envStr.split('&')[1];
+    console.log("请求的 refreshToken: ", this.refreshToken);
+    console.log("请求的 deviceSN: ", this.deviceSN);
   }
 
   async run() {
