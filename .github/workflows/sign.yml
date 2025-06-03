@@ -2,21 +2,22 @@ name: 吉利银河签到
 
 on:
   schedule:
-    - cron: '0 1 * * *'  # 每天9点执行（北京时间 UTC+8 -> cron 需用UTC时间）
-  workflow_dispatch:      # 允许手动触发
+    - cron: '0 1 * * *'  # 每天北京时间 9 点
+  workflow_dispatch:      # 支持手动触发
 
 jobs:
   sign:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - name: Checkout 仓库
+        uses: actions/checkout@v3
+
       - name: 设置 Node.js 环境
         uses: actions/setup-node@v3
         with:
-          node-version: '16'
+          node-version: '18'
 
       - name: 运行签到脚本
+        run: node jlyh.js
         env:
           jlyh: ${{ secrets.JLYH }}
-        run: node jlyh.js
